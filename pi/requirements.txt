@@ -1,0 +1,4 @@
+supabase==2.7.4
+gpiozero==2.0.1
+python-dotenv==1.0.1
+# lgpio is installed via apt (python3-lgpio) — see README

@@ -1,0 +1,16 @@
+[Unit]
+Description=PalAI Rover Supabase Listener
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=pi
+WorkingDirectory=/home/pi/PalAI-v2/pi
+EnvironmentFile=/home/pi/PalAI-v2/pi/.env
+ExecStart=/home/pi/PalAI-v2/pi/.venv/bin/python rover.py
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
