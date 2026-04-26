@@ -2,9 +2,11 @@ import { DPad } from '../components/DPad';
 import { ScanButton } from '../components/ScanButton';
 import { StatusIndicator } from '../components/StatusIndicator';
 import { useRoverStatus } from '../hooks/useRoverStatus';
+import { useScanResults } from '../hooks/useScanResults';
 
 export default function RoverDashboard() {
   const { isOnline } = useRoverStatus();
+  useScanResults();
 
   return (
     <div

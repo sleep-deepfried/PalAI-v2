@@ -17,6 +17,9 @@ from dotenv import load_dotenv
 from supabase import create_client, Client
 
 from motors import Motors
+from camera import Camera
+from sprayer import Sprayer
+from gemini import classify_brownspot
 
 load_dotenv()
 logging.basicConfig(
@@ -43,8 +46,15 @@ class Rover:
     def __init__(self, sb: Client):
         self.sb = sb
         self.motors = Motors()
+        self.camera = Camera(index=int(os.environ.get("WEBCAM_INDEX", "0")))
+        self.sprayer = Sprayer(
+            pin=int(os.environ.get("SPRAY_PIN", "26")),
+            active_low=os.environ.get("SPRAY_ACTIVE_LOW", "1") == "1",
+            duration=float(os.environ.get("SPRAY_DURATION_SECONDS", "2.0")),
+        )
         self._cursor: str = ""           # last seen created_at (ISO string)
         self._last_cmd_at: float = 0.0
+        self._scanning = threading.Event()
         self._stopping = threading.Event()
 
     # ── command dispatch ────────────────────────────────────────────────
@@ -66,11 +76,57 @@ class Rover:
         elif command == "stop":
             self.motors.stop()
         elif command == "scan":
+            self._start_scan()
+
+    def _start_scan(self) -> None:
+        if self._scanning.is_set():
+            log.info("scan already in progress — ignoring duplicate")
+            return
+        self._scanning.set()
+        threading.Thread(target=self._run_scan, name="scan", daemon=True).start()
+
+    def _run_scan(self) -> None:
+        try:
             self.scan()
+        finally:
+            self._scanning.clear()
 
     def scan(self) -> None:
-        # Replace with servo sweep / camera capture / ultrasonic ping.
-        log.info("SCAN triggered (placeholder)")
+        log.info("📷 capturing frame")
+        jpeg = self.camera.capture_jpeg()
+        log.info(
+            "🧠 classifying with %s (%d KB)",
+            os.environ.get("GEMINI_MODEL", "gemini-2.5-flash"),
+            len(jpeg) // 1024,
+        )
+        result = classify_brownspot(jpeg)
+
+        sprayed = False
+        label = result.get("label")
+        confidence = float(result.get("confidence") or 0.0)
+
+        if result.get("is_diseased") is True:
+            log.info("🚨 brown spot detected (conf=%.2f) — spraying", confidence)
+            try:
+                self.sprayer.spray()
+                sprayed = True
+            except Exception as e:
+                log.warning("spray failed: %s", e)
+        elif label == "error":
+            log.warning("scan error: %s", result.get("notes"))
+        else:
+            log.info("✅ %s (conf=%.2f)", label, confidence)
+
+        try:
+            self.sb.table("scan_results").insert({
+                "is_diseased": result.get("is_diseased"),
+                "label": label,
+                "confidence": confidence,
+                "notes": result.get("notes"),
+                "sprayed": sprayed,
+            }).execute()
+        except Exception as e:
+            log.warning("scan_results insert failed: %s", e)
 
     # ── polling loop ────────────────────────────────────────────────────
     def _initial_cursor(self) -> str:
@@ -159,6 +215,8 @@ class Rover:
 
     def cleanup(self) -> None:
         self.motors.cleanup()
+        self.camera.close()
+        self.sprayer.cleanup()
 
 
 def main() -> None:
