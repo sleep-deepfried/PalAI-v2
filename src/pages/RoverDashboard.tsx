@@ -1,5 +1,6 @@
 import { DPad } from '../components/DPad';
 import { ScanButton } from '../components/ScanButton';
+import { SprayButton } from '../components/SprayButton';
 import { StatusIndicator } from '../components/StatusIndicator';
 import { useRoverStatus } from '../hooks/useRoverStatus';
 import { useScanResults } from '../hooks/useScanResults';
@@ -24,8 +25,9 @@ export default function RoverDashboard() {
         <DPad />
       </main>
 
-      <footer>
+      <footer className="flex flex-col gap-2">
         <ScanButton />
+        <SprayButton />
       </footer>
     </div>
   );

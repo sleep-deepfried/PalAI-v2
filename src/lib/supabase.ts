@@ -21,7 +21,8 @@ export type RoverCommand =
   | 'left'
   | 'right'
   | 'stop'
-  | 'scan';
+  | 'scan'
+  | 'spray';
 
 export async function sendCommand(command: RoverCommand) {
   const { error } = await supabase.from('rover_commands').insert({ command });

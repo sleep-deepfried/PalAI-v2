@@ -43,7 +43,7 @@ HEARTBEAT_SECONDS = 5
 POLL_INTERVAL = 0.15          # 150 ms (webapp inserts every 300 ms)
 COMMAND_TIMEOUT_SECONDS = 0.6 # auto-stop if no fresh command within this window
 
-VALID_COMMANDS = {"forward", "backward", "left", "right", "stop", "scan"}
+VALID_COMMANDS = {"forward", "backward", "left", "right", "stop", "scan", "spray"}
 
 
 class Rover:
@@ -81,6 +81,20 @@ class Rover:
             self.motors.stop()
         elif command == "scan":
             self._start_scan()
+        elif command == "spray":
+            self._start_spray()
+
+    def _start_spray(self) -> None:
+        threading.Thread(
+            target=self._run_spray, name="manual-spray", daemon=True
+        ).start()
+
+    def _run_spray(self) -> None:
+        log.info("💧 manual spray")
+        try:
+            self.sprayer.spray()
+        except Exception as e:
+            log.warning("manual spray failed: %s", e)
 
     def _start_scan(self) -> None:
         if self._scanning.is_set():
