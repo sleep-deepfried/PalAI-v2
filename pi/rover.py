@@ -20,6 +20,7 @@ from motors import Motors
 from camera import Camera
 from sprayer import Sprayer
 from gemini import classify_brownspot
+import preview_server
 
 load_dotenv()
 logging.basicConfig(
@@ -27,7 +28,10 @@ logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(message)s",
 )
 # Silence noisy library loggers — only show our own events.
-for _name in ("httpx", "httpcore", "hpack", "websockets", "urllib3"):
+for _name in (
+    "httpx", "httpcore", "hpack", "websockets", "urllib3",
+    "google_genai", "google_genai.types", "google_genai.models",
+):
     logging.getLogger(_name).setLevel(logging.WARNING)
 
 log = logging.getLogger("rover")
@@ -104,18 +108,21 @@ class Rover:
         sprayed = False
         label = result.get("label")
         confidence = float(result.get("confidence") or 0.0)
+        notes = (result.get("notes") or "").strip()
 
         if result.get("is_diseased") is True:
             log.info("🚨 brown spot detected (conf=%.2f) — spraying", confidence)
+            if notes:
+                log.info("   note: %s", notes)
             try:
                 self.sprayer.spray()
                 sprayed = True
             except Exception as e:
                 log.warning("spray failed: %s", e)
         elif label == "error":
-            log.warning("scan error: %s", result.get("notes"))
+            log.warning("scan error: %s", notes)
         else:
-            log.info("✅ %s (conf=%.2f)", label, confidence)
+            log.info("✅ %s (conf=%.2f) — %s", label, confidence, notes or "(no notes)")
 
         try:
             self.sb.table("scan_results").insert({
@@ -225,6 +232,10 @@ def main() -> None:
 
     signal.signal(signal.SIGINT, rover.request_stop)
     signal.signal(signal.SIGTERM, rover.request_stop)
+
+    preview_port = int(os.environ.get("PREVIEW_PORT", "8080"))
+    if preview_port > 0:
+        preview_server.start(rover.camera, port=preview_port)
 
     threads = [
         threading.Thread(target=rover.poll_loop, name="poll", daemon=True),

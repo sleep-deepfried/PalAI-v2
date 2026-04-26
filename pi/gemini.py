@@ -8,19 +8,24 @@ from typing import Any
 log = logging.getLogger(__name__)
 
 PROMPT = (
-    "You are a rice plant pathologist. Look at this photo and decide whether the "
-    "rice leaf shows symptoms of brown spot disease (Cochliobolus miyabeanus / "
-    "Bipolaris oryzae) — small to medium oval brown lesions, often with a gray "
-    "center and yellow halo, scattered across the leaf blade.\n\n"
-    "Respond ONLY with JSON matching this schema:\n"
+    "You are a plant pathologist analyzing a photo for rice brown spot disease "
+    "(Cochliobolus miyabeanus / Bipolaris oryzae). Brown spot symptoms: small to "
+    "medium oval brown lesions, often with a gray center and yellow halo, "
+    "scattered on the leaf blade.\n\n"
+    "Classify the photo using these rules:\n"
+    "- label='brownspot': you can see oval brown lesions on a green leaf.\n"
+    "- label='healthy': you can see a green leaf with no visible lesions.\n"
+    "- label='unknown': the image is blurry, dark, contains no plant material, "
+    "or shows a leaf that is not green/rice-like.\n\n"
+    "Be decisive — if any leaf is visible, prefer 'healthy' or 'brownspot' over "
+    "'unknown'. Only fall back to 'unknown' when no plant is in the frame.\n\n"
+    "Respond ONLY with JSON:\n"
     "{\n"
-    '  "is_diseased": boolean,            // true ONLY if brown spot is clearly visible\n'
+    '  "is_diseased": boolean,    // true only when label is "brownspot"\n'
     '  "label": "brownspot" | "healthy" | "unknown",\n'
-    '  "confidence": number,              // 0.0 to 1.0\n'
-    '  "notes": string                     // short reason, <= 120 chars\n'
-    "}\n"
-    "If the image is unclear, not a rice leaf, or you cannot decide, set "
-    'label="unknown" and is_diseased=false.'
+    '  "confidence": number,      // 0.0 to 1.0\n'
+    '  "notes": string             // brief reason, <= 140 chars, describe what you see\n'
+    "}"
 )
 
 _RESPONSE_SCHEMA = {
