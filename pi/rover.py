@@ -21,8 +21,12 @@ from motors import Motors
 load_dotenv()
 logging.basicConfig(
     level=os.environ.get("LOG_LEVEL", "INFO").upper(),
-    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    format="%(asctime)s [%(levelname)s] %(message)s",
 )
+# Silence noisy library loggers — only show our own events.
+for _name in ("httpx", "httpcore", "hpack", "websockets", "urllib3"):
+    logging.getLogger(_name).setLevel(logging.WARNING)
+
 log = logging.getLogger("rover")
 
 SUPABASE_URL = os.environ["SUPABASE_URL"]
@@ -89,7 +93,7 @@ class Rover:
 
     def poll_loop(self) -> None:
         self._cursor = self._initial_cursor()
-        log.info("Polling rover_commands starting from created_at > %s", self._cursor)
+        log.info("Listening for rover commands…")
 
         while not self._stopping.is_set():
             try:
