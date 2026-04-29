@@ -12,9 +12,11 @@ export function useHoldCommand({ onActiveChange }: Options = {}) {
   const intervalRef = useRef<number | null>(null);
   const activeRef = useRef<DriveCommand | null>(null);
   const speedRef = useRef(0.7);
+  const onActiveRef = useRef<Options['onActiveChange']>(undefined);
 
   const { speed } = useSpeed();
   speedRef.current = speed;
+  onActiveRef.current = onActiveChange;
 
   const stop = useCallback(() => {
     if (intervalRef.current !== null) {
@@ -23,23 +25,23 @@ export function useHoldCommand({ onActiveChange }: Options = {}) {
     }
     if (activeRef.current !== null) {
       activeRef.current = null;
-      onActiveChange?.(null);
+      onActiveRef.current?.(null);
       void sendDrive('stop', speedRef.current);
     }
-  }, [onActiveChange]);
+  }, []);
 
   const start = useCallback(
     (command: DriveCommand) => {
       if (activeRef.current === command) return;
       stop();
       activeRef.current = command;
-      onActiveChange?.(command);
+      onActiveRef.current?.(command);
       void sendDrive(command, speedRef.current);
       intervalRef.current = window.setInterval(() => {
         void sendDrive(command, speedRef.current);
       }, REPEAT_MS);
     },
-    [stop, onActiveChange]
+    [stop]
   );
 
   useEffect(() => () => stop(), [stop]);
