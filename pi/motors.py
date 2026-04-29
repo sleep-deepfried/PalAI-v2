@@ -60,12 +60,15 @@ class Motors:
     def backward(self) -> None:
         self._drive(1, 0, 0, 1, self.speed, self.speed)
 
-    # ── tank turns (counter-rotate for in-place pivot) ──────
+    # ── pivot turns (one wheel stopped) ─────────────────────
+    # Tank turns (counter-rotation) need too much torque to overcome lateral
+    # tire friction; the chassis just sits still. Pivoting around a stopped
+    # wheel turns reliably with the same motors.
     def left(self) -> None:
-        self._drive(1, 0, 1, 0, self.speed, self.speed)
+        self._drive(0, 0, 1, 0, 0.0, self.speed)
 
     def right(self) -> None:
-        self._drive(0, 1, 0, 1, self.speed, self.speed)
+        self._drive(0, 1, 0, 0, self.speed, 0.0)
 
     # ── diagonals (curve by slowing inner wheel) ────────────
     def forward_left(self) -> None:
