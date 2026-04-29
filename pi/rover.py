@@ -12,6 +12,7 @@ benefit from durable history.
 - Stops automatically if no command arrives within COMMAND_TIMEOUT_SECONDS.
 """
 from __future__ import annotations
+import asyncio
 import logging
 import os
 import signal
@@ -20,6 +21,7 @@ import time
 
 from dotenv import load_dotenv
 from supabase import create_client, Client
+from supabase import acreate_client
 
 from motors import Motors
 from camera import Camera
@@ -169,17 +171,25 @@ class Rover:
             log.warning("scan_results insert failed: %s", e)
 
     # ── broadcast subscriber (drive commands) ───────────────────────────
+    # supabase-py's realtime broadcast is async-only, so this thread owns its
+    # own asyncio loop and uses the AsyncClient.
     def broadcast_loop(self) -> None:
         try:
-            ch = self.sb.channel("rover-control")
-            ch.on_broadcast("cmd", self._on_broadcast).subscribe()
+            asyncio.run(self._broadcast_async())
+        except Exception as e:
+            log.warning("broadcast loop crashed: %s", e)
+
+    async def _broadcast_async(self) -> None:
+        try:
+            client = await acreate_client(SUPABASE_URL, SUPABASE_KEY)
+            ch = client.channel("rover-control")
+            await ch.on_broadcast("cmd", self._on_broadcast).subscribe()
             log.info("📡 broadcast subscribed: rover-control")
         except Exception as e:
-            log.warning("broadcast subscribe failed: %s — drive commands will not work", e)
+            log.warning("broadcast subscribe failed: %s — drive commands disabled", e)
             return
-        # Realtime client manages the websocket on its own thread.
         while not self._stopping.is_set():
-            self._stopping.wait(1.0)
+            await asyncio.sleep(0.5)
 
     def _on_broadcast(self, payload) -> None:
         try:
