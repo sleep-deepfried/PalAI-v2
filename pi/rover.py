@@ -182,6 +182,7 @@ class Rover:
     async def _broadcast_async(self) -> None:
         try:
             client = await acreate_client(SUPABASE_URL, SUPABASE_KEY)
+            await client.realtime.connect()
             ch = client.channel("rover-control")
             await ch.on_broadcast("cmd", self._on_broadcast).subscribe()
             log.info("📡 broadcast subscribed: rover-control")
