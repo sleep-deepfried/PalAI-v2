@@ -38,9 +38,15 @@ logging.basicConfig(
 for _name in (
     "httpx", "httpcore", "hpack", "websockets", "urllib3",
     "google_genai", "google_genai.types", "google_genai.models",
-    "realtime", "realtime._async.client", "realtime._async.channel",
 ):
     logging.getLogger(_name).setLevel(logging.WARNING)
+# Realtime is extremely chatty at INFO (logs every send). Force ERROR.
+for _name in (
+    "realtime",
+    "realtime._async.client", "realtime._async.channel",
+    "realtime.client", "realtime.channel",
+):
+    logging.getLogger(_name).setLevel(logging.ERROR)
 
 log = logging.getLogger("rover")
 
@@ -183,6 +189,11 @@ class Rover:
         try:
             client = await acreate_client(SUPABASE_URL, SUPABASE_KEY)
             await client.realtime.connect()
+            # Some realtime servers require an access token before joining.
+            try:
+                await client.realtime.set_auth(SUPABASE_KEY)
+            except Exception:
+                pass
             ch = client.channel("rover-control")
             await ch.on_broadcast("cmd", self._on_broadcast).subscribe()
             log.info("📡 broadcast subscribed: rover-control")
