@@ -42,9 +42,9 @@ class Motors:
 
     def _drive(self, in1: int, in2: int, in3: int, in4: int,
                left_pwm: float, right_pwm: float) -> None:
+        log.debug("drive IN1=%d IN2=%d IN3=%d IN4=%d L=%.2f R=%.2f",
+                  in1, in2, in3, in4, left_pwm, right_pwm)
         if not HAS_GPIO:
-            log.info("MOCK drive IN1=%d IN2=%d IN3=%d IN4=%d L=%.2f R=%.2f",
-                     in1, in2, in3, in4, left_pwm, right_pwm)
             return
         (self.IN1.on if in1 else self.IN1.off)()
         (self.IN2.on if in2 else self.IN2.off)()
