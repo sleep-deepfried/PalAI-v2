@@ -1,13 +1,19 @@
+import { useState } from 'react';
+import { ActiveCommandBadge } from '../components/ActiveCommandBadge';
 import { DPad } from '../components/DPad';
 import { ScanButton } from '../components/ScanButton';
+import { SpeedSlider } from '../components/SpeedSlider';
 import { SprayButton } from '../components/SprayButton';
 import { StatusIndicator } from '../components/StatusIndicator';
+import { SpeedProvider } from '../hooks/useSpeed';
 import { useRoverStatus } from '../hooks/useRoverStatus';
 import { useScanResults } from '../hooks/useScanResults';
+import type { DriveCommand } from '../lib/supabase';
 
-export default function RoverDashboard() {
+function DashboardInner() {
   const { isOnline } = useRoverStatus();
   useScanResults();
+  const [active, setActive] = useState<DriveCommand | null>(null);
 
   return (
     <div
@@ -21,8 +27,12 @@ export default function RoverDashboard() {
         <StatusIndicator isOnline={isOnline} />
       </header>
 
-      <main className="flex flex-1 items-center justify-center py-8">
-        <DPad />
+      <main className="flex flex-1 flex-col items-center justify-center gap-4 py-6">
+        <ActiveCommandBadge active={active} />
+        <DPad onActiveChange={setActive} />
+        <div className="w-full max-w-xs">
+          <SpeedSlider />
+        </div>
       </main>
 
       <footer className="flex flex-col gap-2">
@@ -30,5 +40,13 @@ export default function RoverDashboard() {
         <SprayButton />
       </footer>
     </div>
+  );
+}
+
+export default function RoverDashboard() {
+  return (
+    <SpeedProvider>
+      <DashboardInner />
+    </SpeedProvider>
   );
 }

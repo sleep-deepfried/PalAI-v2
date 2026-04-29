@@ -1,10 +1,15 @@
 """
-PalAI rover — polls Supabase rover_commands and drives motors.
+PalAI rover — drives motors from Supabase Realtime broadcasts and table inserts.
 
-- Polls public.rover_commands every POLL_INTERVAL seconds for new rows.
+Drive commands (forward/back/left/right/stop + 4 diagonals) ride a Supabase
+Realtime broadcast channel ('rover-control', event 'cmd', payload
+{command, speed}). Scan/spray come over the rover_commands table because they
+benefit from durable history.
+
+- Broadcast subscriber dispatches drive commands.
+- Polls public.rover_commands every POLL_INTERVAL for scan/spray rows only.
 - Maintains rover_status.is_online via heartbeat.
-- Stops automatically if no command arrives within COMMAND_TIMEOUT_SECONDS
-  (covers the webapp's press-and-hold protocol if 'stop' is missed).
+- Stops automatically if no command arrives within COMMAND_TIMEOUT_SECONDS.
 """
 from __future__ import annotations
 import logging
@@ -31,6 +36,7 @@ logging.basicConfig(
 for _name in (
     "httpx", "httpcore", "hpack", "websockets", "urllib3",
     "google_genai", "google_genai.types", "google_genai.models",
+    "realtime", "realtime._async.client", "realtime._async.channel",
 ):
     logging.getLogger(_name).setLevel(logging.WARNING)
 
@@ -40,10 +46,15 @@ SUPABASE_URL = os.environ["SUPABASE_URL"]
 SUPABASE_KEY = os.environ["SUPABASE_ANON_KEY"]
 STATUS_ROW_ID = 1
 HEARTBEAT_SECONDS = 5
-POLL_INTERVAL = 0.15          # 150 ms (webapp inserts every 300 ms)
-COMMAND_TIMEOUT_SECONDS = 0.6 # auto-stop if no fresh command within this window
+POLL_INTERVAL = 0.5           # scan/spray only — no need to be fast
+COMMAND_TIMEOUT_SECONDS = 0.6 # auto-stop if no fresh drive command in this window
 
-VALID_COMMANDS = {"forward", "backward", "left", "right", "stop", "scan", "spray"}
+DRIVE_COMMANDS = {
+    "forward", "backward", "left", "right", "stop",
+    "forward_left", "forward_right", "backward_left", "backward_right",
+}
+ASYNC_COMMANDS = {"scan", "spray"}
+VALID_COMMANDS = DRIVE_COMMANDS | ASYNC_COMMANDS
 
 
 class Rover:
@@ -56,7 +67,7 @@ class Rover:
             active_low=os.environ.get("SPRAY_ACTIVE_LOW", "1") == "1",
             duration=float(os.environ.get("SPRAY_DURATION_SECONDS", "2.0")),
         )
-        self._cursor: str = ""           # last seen created_at (ISO string)
+        self._cursor: str = ""           # last seen scan/spray created_at
         self._last_cmd_at: float = 0.0
         self._scanning = threading.Event()
         self._stopping = threading.Event()
@@ -77,6 +88,14 @@ class Rover:
             self.motors.left()
         elif command == "right":
             self.motors.right()
+        elif command == "forward_left":
+            self.motors.forward_left()
+        elif command == "forward_right":
+            self.motors.forward_right()
+        elif command == "backward_left":
+            self.motors.backward_left()
+        elif command == "backward_right":
+            self.motors.backward_right()
         elif command == "stop":
             self.motors.stop()
         elif command == "scan":
@@ -149,9 +168,33 @@ class Rover:
         except Exception as e:
             log.warning("scan_results insert failed: %s", e)
 
-    # ── polling loop ────────────────────────────────────────────────────
+    # ── broadcast subscriber (drive commands) ───────────────────────────
+    def broadcast_loop(self) -> None:
+        try:
+            ch = self.sb.channel("rover-control")
+            ch.on_broadcast("cmd", self._on_broadcast).subscribe()
+            log.info("📡 broadcast subscribed: rover-control")
+        except Exception as e:
+            log.warning("broadcast subscribe failed: %s — drive commands will not work", e)
+            return
+        # Realtime client manages the websocket on its own thread.
+        while not self._stopping.is_set():
+            self._stopping.wait(1.0)
+
+    def _on_broadcast(self, payload) -> None:
+        try:
+            msg = (payload or {}).get("payload") or {}
+            cmd = msg.get("command")
+            speed = msg.get("speed")
+            if isinstance(speed, (int, float)):
+                self.motors.set_speed(float(speed))
+            if cmd:
+                self.handle_command(cmd)
+        except Exception as e:
+            log.warning("broadcast handler error: %s", e)
+
+    # ── polling loop (scan/spray only) ──────────────────────────────────
     def _initial_cursor(self) -> str:
-        """Return the most recent created_at so we don't replay history."""
         try:
             res = (
                 self.sb.table("rover_commands")
@@ -165,12 +208,11 @@ class Rover:
                 return str(data[0]["created_at"])
         except Exception as e:
             log.warning("could not fetch initial cursor: %s", e)
-        # Fall back to "epoch" — Postgres accepts this and we'll race-skip below.
         return "1970-01-01T00:00:00+00:00"
 
     def poll_loop(self) -> None:
         self._cursor = self._initial_cursor()
-        log.info("Listening for rover commands…")
+        log.info("Listening for scan/spray commands…")
 
         while not self._stopping.is_set():
             try:
@@ -178,8 +220,9 @@ class Rover:
                     self.sb.table("rover_commands")
                     .select("created_at, command")
                     .gt("created_at", self._cursor)
+                    .in_("command", list(ASYNC_COMMANDS))
                     .order("created_at")
-                    .limit(50)
+                    .limit(20)
                     .execute()
                 )
                 rows = res.data or []
@@ -252,6 +295,7 @@ def main() -> None:
         preview_server.start(rover.camera, port=preview_port)
 
     threads = [
+        threading.Thread(target=rover.broadcast_loop, name="broadcast", daemon=True),
         threading.Thread(target=rover.poll_loop, name="poll", daemon=True),
         threading.Thread(target=rover.heartbeat_loop, name="heartbeat", daemon=True),
         threading.Thread(target=rover.safety_loop, name="safety", daemon=True),

@@ -1,11 +1,20 @@
 import { useCallback, useEffect, useRef } from 'react';
-import { sendCommand, type RoverCommand } from '../lib/supabase';
+import { sendDrive, type DriveCommand } from '../lib/supabase';
+import { useSpeed } from './useSpeed';
 
 const REPEAT_MS = 300;
 
-export function useHoldCommand() {
+interface Options {
+  onActiveChange?: (cmd: DriveCommand | null) => void;
+}
+
+export function useHoldCommand({ onActiveChange }: Options = {}) {
   const intervalRef = useRef<number | null>(null);
-  const activeRef = useRef<RoverCommand | null>(null);
+  const activeRef = useRef<DriveCommand | null>(null);
+  const speedRef = useRef(0.7);
+
+  const { speed } = useSpeed();
+  speedRef.current = speed;
 
   const stop = useCallback(() => {
     if (intervalRef.current !== null) {
@@ -14,27 +23,29 @@ export function useHoldCommand() {
     }
     if (activeRef.current !== null) {
       activeRef.current = null;
-      void sendCommand('stop');
+      onActiveChange?.(null);
+      void sendDrive('stop', speedRef.current);
     }
-  }, []);
+  }, [onActiveChange]);
 
   const start = useCallback(
-    (command: RoverCommand) => {
+    (command: DriveCommand) => {
       if (activeRef.current === command) return;
       stop();
       activeRef.current = command;
-      void sendCommand(command);
+      onActiveChange?.(command);
+      void sendDrive(command, speedRef.current);
       intervalRef.current = window.setInterval(() => {
-        void sendCommand(command);
+        void sendDrive(command, speedRef.current);
       }, REPEAT_MS);
     },
-    [stop]
+    [stop, onActiveChange]
   );
 
   useEffect(() => () => stop(), [stop]);
 
   const bind = useCallback(
-    (command: RoverCommand) => ({
+    (command: DriveCommand) => ({
       onPointerDown: (e: React.PointerEvent) => {
         e.preventDefault();
         (e.target as Element).setPointerCapture?.(e.pointerId);

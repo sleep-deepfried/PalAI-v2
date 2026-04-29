@@ -22,6 +22,7 @@ except (ImportError, RuntimeError, OSError):
     log.warning("gpiozero not available — running in MOCK mode")
 
 DEFAULT_SPEED = 0.7  # 0.0-1.0
+TURN_INNER = 0.4     # inner-wheel scale for diagonal curves
 
 
 class Motors:
@@ -52,17 +53,32 @@ class Motors:
         self.ENA.value = left_pwm
         self.ENB.value = right_pwm
 
+    # ── straight ────────────────────────────────────────────
     def forward(self) -> None:
         self._drive(0, 1, 1, 0, self.speed, self.speed)
 
     def backward(self) -> None:
         self._drive(1, 0, 0, 1, self.speed, self.speed)
 
+    # ── tank turns (counter-rotate for in-place pivot) ──────
     def left(self) -> None:
-        self._drive(0, 0, 1, 0, 0.0, self.speed)
+        self._drive(1, 0, 1, 0, self.speed, self.speed)
 
     def right(self) -> None:
-        self._drive(0, 1, 0, 0, self.speed, 0.0)
+        self._drive(0, 1, 0, 1, self.speed, self.speed)
+
+    # ── diagonals (curve by slowing inner wheel) ────────────
+    def forward_left(self) -> None:
+        self._drive(0, 1, 1, 0, self.speed * TURN_INNER, self.speed)
+
+    def forward_right(self) -> None:
+        self._drive(0, 1, 1, 0, self.speed, self.speed * TURN_INNER)
+
+    def backward_left(self) -> None:
+        self._drive(1, 0, 0, 1, self.speed * TURN_INNER, self.speed)
+
+    def backward_right(self) -> None:
+        self._drive(1, 0, 0, 1, self.speed, self.speed * TURN_INNER)
 
     def stop(self) -> None:
         self._drive(0, 0, 0, 0, 0.0, 0.0)
