@@ -28,23 +28,13 @@ export type DriveCommand =
 
 export type RoverCommand = DriveCommand | 'scan' | 'spray';
 
-// High-frequency drive commands ride a Realtime Broadcast channel — no DB writes.
-export const driveChannel = supabase.channel('rover-control', {
-  config: { broadcast: { ack: false, self: false } },
-});
-driveChannel.subscribe((status) => {
-  console.log('[driveChannel] status:', status);
-});
-
 export async function sendDrive(command: DriveCommand, speed: number): Promise<void> {
-  await driveChannel.send({
-    type: 'broadcast',
-    event: 'cmd',
-    payload: { command, speed },
-  });
+  const { error } = await supabase
+    .from('rover_commands')
+    .insert({ command, speed });
+  if (error) console.error('[sendDrive] error', command, error);
 }
 
-// Scan/Spray stay on the table-insert path — rare, idempotent, durable.
 export async function sendCommand(command: 'scan' | 'spray'): Promise<void> {
   const { error } = await supabase.from('rover_commands').insert({ command });
   if (error) console.error('[sendCommand] error', command, error);

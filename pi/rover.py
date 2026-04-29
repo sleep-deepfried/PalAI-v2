@@ -1,18 +1,12 @@
 """
-PalAI rover — drives motors from Supabase Realtime broadcasts and table inserts.
+PalAI rover — polls Supabase rover_commands and drives motors.
 
-Drive commands (forward/back/left/right/stop + 4 diagonals) ride a Supabase
-Realtime broadcast channel ('rover-control', event 'cmd', payload
-{command, speed}). Scan/spray come over the rover_commands table because they
-benefit from durable history.
-
-- Broadcast subscriber dispatches drive commands.
-- Polls public.rover_commands every POLL_INTERVAL for scan/spray rows only.
+- Polls public.rover_commands every POLL_INTERVAL seconds for new rows.
+- Each row carries `command` (text) and optional `speed` (0.0-1.0).
 - Maintains rover_status.is_online via heartbeat.
 - Stops automatically if no command arrives within COMMAND_TIMEOUT_SECONDS.
 """
 from __future__ import annotations
-import asyncio
 import logging
 import os
 import signal
@@ -21,7 +15,6 @@ import time
 
 from dotenv import load_dotenv
 from supabase import create_client, Client
-from supabase import acreate_client
 
 from motors import Motors
 from camera import Camera
@@ -40,13 +33,6 @@ for _name in (
     "google_genai", "google_genai.types", "google_genai.models",
 ):
     logging.getLogger(_name).setLevel(logging.WARNING)
-# Realtime is extremely chatty at INFO (logs every send). Force ERROR.
-for _name in (
-    "realtime",
-    "realtime._async.client", "realtime._async.channel",
-    "realtime.client", "realtime.channel",
-):
-    logging.getLogger(_name).setLevel(logging.ERROR)
 
 log = logging.getLogger("rover")
 
@@ -54,8 +40,8 @@ SUPABASE_URL = os.environ["SUPABASE_URL"]
 SUPABASE_KEY = os.environ["SUPABASE_ANON_KEY"]
 STATUS_ROW_ID = 1
 HEARTBEAT_SECONDS = 5
-POLL_INTERVAL = 0.5           # scan/spray only — no need to be fast
-COMMAND_TIMEOUT_SECONDS = 0.6 # auto-stop if no fresh drive command in this window
+POLL_INTERVAL = 0.15          # 150 ms (webapp inserts every 300 ms)
+COMMAND_TIMEOUT_SECONDS = 0.6 # auto-stop if no fresh command within this window
 
 DRIVE_COMMANDS = {
     "forward", "backward", "left", "right", "stop",
@@ -75,16 +61,18 @@ class Rover:
             active_low=os.environ.get("SPRAY_ACTIVE_LOW", "1") == "1",
             duration=float(os.environ.get("SPRAY_DURATION_SECONDS", "2.0")),
         )
-        self._cursor: str = ""           # last seen scan/spray created_at
+        self._cursor: str = ""           # last seen created_at (ISO string)
         self._last_cmd_at: float = 0.0
         self._scanning = threading.Event()
         self._stopping = threading.Event()
 
     # ── command dispatch ────────────────────────────────────────────────
-    def handle_command(self, command: str) -> None:
+    def handle_command(self, command: str, speed: float | None = None) -> None:
         if command not in VALID_COMMANDS:
             log.warning("Unknown command: %s", command)
             return
+        if speed is not None and command in DRIVE_COMMANDS:
+            self.motors.set_speed(speed)
         log.info("→ %s", command)
         self._last_cmd_at = time.monotonic()
 
@@ -176,46 +164,7 @@ class Rover:
         except Exception as e:
             log.warning("scan_results insert failed: %s", e)
 
-    # ── broadcast subscriber (drive commands) ───────────────────────────
-    # supabase-py's realtime broadcast is async-only, so this thread owns its
-    # own asyncio loop and uses the AsyncClient.
-    def broadcast_loop(self) -> None:
-        try:
-            asyncio.run(self._broadcast_async())
-        except Exception as e:
-            log.warning("broadcast loop crashed: %s", e)
-
-    async def _broadcast_async(self) -> None:
-        try:
-            client = await acreate_client(SUPABASE_URL, SUPABASE_KEY)
-            await client.realtime.connect()
-            # Some realtime servers require an access token before joining.
-            try:
-                await client.realtime.set_auth(SUPABASE_KEY)
-            except Exception:
-                pass
-            ch = client.channel("rover-control")
-            await ch.on_broadcast("cmd", self._on_broadcast).subscribe()
-            log.info("📡 broadcast subscribed: rover-control")
-        except Exception as e:
-            log.warning("broadcast subscribe failed: %s — drive commands disabled", e)
-            return
-        while not self._stopping.is_set():
-            await asyncio.sleep(0.5)
-
-    def _on_broadcast(self, payload) -> None:
-        try:
-            msg = (payload or {}).get("payload") or {}
-            cmd = msg.get("command")
-            speed = msg.get("speed")
-            if isinstance(speed, (int, float)):
-                self.motors.set_speed(float(speed))
-            if cmd:
-                self.handle_command(cmd)
-        except Exception as e:
-            log.warning("broadcast handler error: %s", e)
-
-    # ── polling loop (scan/spray only) ──────────────────────────────────
+    # ── polling loop ────────────────────────────────────────────────────
     def _initial_cursor(self) -> str:
         try:
             res = (
@@ -234,25 +183,26 @@ class Rover:
 
     def poll_loop(self) -> None:
         self._cursor = self._initial_cursor()
-        log.info("Listening for scan/spray commands…")
+        log.info("Listening for rover commands…")
 
         while not self._stopping.is_set():
             try:
                 res = (
                     self.sb.table("rover_commands")
-                    .select("created_at, command")
+                    .select("created_at, command, speed")
                     .gt("created_at", self._cursor)
-                    .in_("command", list(ASYNC_COMMANDS))
                     .order("created_at")
-                    .limit(20)
+                    .limit(50)
                     .execute()
                 )
                 rows = res.data or []
                 for row in rows:
                     ts = row.get("created_at")
                     cmd = row.get("command")
+                    raw_speed = row.get("speed")
+                    speed = float(raw_speed) if isinstance(raw_speed, (int, float)) else None
                     if cmd:
-                        self.handle_command(cmd)
+                        self.handle_command(cmd, speed=speed)
                     if ts and ts > self._cursor:
                         self._cursor = ts
             except Exception as e:
@@ -317,7 +267,6 @@ def main() -> None:
         preview_server.start(rover.camera, port=preview_port)
 
     threads = [
-        threading.Thread(target=rover.broadcast_loop, name="broadcast", daemon=True),
         threading.Thread(target=rover.poll_loop, name="poll", daemon=True),
         threading.Thread(target=rover.heartbeat_loop, name="heartbeat", daemon=True),
         threading.Thread(target=rover.safety_loop, name="safety", daemon=True),
