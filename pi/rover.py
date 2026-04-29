@@ -196,15 +196,28 @@ class Rover:
                     .execute()
                 )
                 rows = res.data or []
+                # Advance cursor across every row so we don't replay them.
                 for row in rows:
                     ts = row.get("created_at")
-                    cmd = row.get("command")
-                    raw_speed = row.get("speed")
-                    speed = float(raw_speed) if isinstance(raw_speed, (int, float)) else None
-                    if cmd:
-                        self.handle_command(cmd, speed=speed)
                     if ts and ts > self._cursor:
                         self._cursor = ts
+
+                # Always run scan/spray (they're side-effect commands), but for
+                # drive commands only execute the LAST one in the batch — bursts
+                # of duplicate forward+stop pairs would otherwise stutter motors.
+                last_drive_row = None
+                for row in rows:
+                    cmd = row.get("command")
+                    if cmd in ASYNC_COMMANDS:
+                        self.handle_command(cmd)
+                    elif cmd in DRIVE_COMMANDS:
+                        last_drive_row = row
+
+                if last_drive_row is not None:
+                    cmd = last_drive_row.get("command")
+                    raw_speed = last_drive_row.get("speed")
+                    speed = float(raw_speed) if isinstance(raw_speed, (int, float)) else None
+                    self.handle_command(cmd, speed=speed)
             except Exception as e:
                 log.warning("poll error: %s", e)
 

@@ -15,11 +15,13 @@ import { sendDrive, type DriveCommand } from '../lib/supabase';
 import { useSpeed } from '../hooks/useSpeed';
 import { cn } from '../lib/utils';
 
+// No scale/transition: a shrinking button mid-touch can fire pointerleave on
+// some mobile browsers even with pointer capture, breaking press-and-hold.
 const padBase =
-  'flex items-center justify-center rounded-2xl border text-zinc-100 shadow-lg active:scale-95 transition-all select-none w-20 h-20 sm:w-24 sm:h-24 border-zinc-800 bg-zinc-900';
+  'flex items-center justify-center rounded-2xl border text-zinc-100 shadow-lg select-none w-20 h-20 sm:w-24 sm:h-24 border-zinc-800 bg-zinc-900';
 
 const padActive =
-  'border-emerald-500/60 bg-emerald-900/60 text-emerald-100 scale-95';
+  'border-emerald-500/60 bg-emerald-900/60 text-emerald-100';
 
 interface HoldButtonProps {
   command: Exclude<DriveCommand, 'stop'>;
