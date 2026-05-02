@@ -3,4 +3,6 @@ gpiozero==2.0.1
 python-dotenv==1.0.1
 google-genai==0.3.0
 opencv-python-headless==4.10.0.84
+pyzbar==0.1.9
 # lgpio is installed via apt (python3-lgpio) — see README
+# pyzbar needs the apt package `libzbar0` — see README

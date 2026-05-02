@@ -20,6 +20,7 @@ from motors import Motors
 from camera import Camera
 from sprayer import Sprayer
 from gemini import classify_brownspot
+from qr import decode_grid_cell
 import preview_server
 
 load_dotenv()
@@ -127,6 +128,11 @@ class Rover:
     def scan(self) -> None:
         log.info("📷 capturing frame")
         jpeg = self.camera.capture_jpeg()
+        grid_row, grid_col, qr_raw = decode_grid_cell(jpeg)
+        if grid_row is not None:
+            log.info("📍 grid cell R%dC%d", grid_row, grid_col)
+        else:
+            log.info("📍 no grid QR in frame (raw=%s)", qr_raw or "—")
         log.info(
             "🧠 classifying with %s (%d KB)",
             os.environ.get("GEMINI_MODEL", "gemini-2.5-flash"),
@@ -160,6 +166,9 @@ class Rover:
                 "confidence": confidence,
                 "notes": result.get("notes"),
                 "sprayed": sprayed,
+                "grid_row": grid_row,
+                "grid_col": grid_col,
+                "qr_raw": qr_raw,
             }).execute()
         except Exception as e:
             log.warning("scan_results insert failed: %s", e)

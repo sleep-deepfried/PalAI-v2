@@ -1,4 +1,6 @@
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
+import { History } from 'lucide-react';
 import { ActiveCommandBadge } from '../components/ActiveCommandBadge';
 import { DPad } from '../components/DPad';
 import { ScanButton } from '../components/ScanButton';
@@ -24,7 +26,17 @@ function DashboardInner() {
         <h1 className="text-lg font-semibold tracking-tight text-zinc-100">
           Rover Control
         </h1>
-        <StatusIndicator isOnline={isOnline} />
+        <div className="flex items-center gap-3">
+          <Link
+            to="/history"
+            className="inline-flex items-center gap-1 text-sm text-zinc-400 hover:text-zinc-200"
+            aria-label="Scan history"
+          >
+            <History className="h-4 w-4" />
+            <span>History</span>
+          </Link>
+          <StatusIndicator isOnline={isOnline} />
+        </div>
       </header>
 
       <main className="flex flex-1 flex-col items-center justify-center gap-4 py-6">

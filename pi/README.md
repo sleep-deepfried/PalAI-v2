@@ -24,8 +24,9 @@ to the `video` group: `sudo usermod -aG video $USER` and re-login.
 
 ```bash
 # 1. System packages (gpiozero + lgpio backend, prebuilt — no compiler needed)
+# libzbar0 is the C library pyzbar binds to for QR decoding.
 sudo apt update
-sudo apt install -y python3-gpiozero python3-lgpio
+sudo apt install -y python3-gpiozero python3-lgpio libzbar0
 
 # 2. Code
 cd ~
@@ -79,6 +80,21 @@ journalctl -u rover -f
    alter table scan_results enable row level security;
    create policy "anon read scan_results"   on scan_results for select to anon using (true);
    create policy "anon insert scan_results" on scan_results for insert to anon with check (true);
+
+   -- 5x5 grid position decoded from in-frame QR markers (R{row}C{col}, 0..4).
+   alter table scan_results add column if not exists grid_row smallint;
+   alter table scan_results add column if not exists grid_col smallint;
+   alter table scan_results add column if not exists qr_raw   text;
+   alter table scan_results
+     drop constraint if exists scan_results_grid_row_chk,
+     add  constraint scan_results_grid_row_chk
+       check (grid_row is null or grid_row between 0 and 4);
+   alter table scan_results
+     drop constraint if exists scan_results_grid_col_chk,
+     add  constraint scan_results_grid_col_chk
+       check (grid_col is null or grid_col between 0 and 4);
+   create index if not exists scan_results_grid_idx
+     on scan_results (grid_row, grid_col, created_at desc);
    ```
 3. Database → Replication: enable on `scan_results` so the webapp toast fires in real time.
 
