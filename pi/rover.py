@@ -145,7 +145,7 @@ class Rover:
         confidence = float(result.get("confidence") or 0.0)
         notes = (result.get("notes") or "").strip()
 
-        if result.get("is_diseased") is True:
+        if label == "brownspot":
             log.info("🚨 brown spot detected (conf=%.2f) — spraying", confidence)
             if notes:
                 log.info("   note: %s", notes)
@@ -154,6 +154,11 @@ class Rover:
                 sprayed = True
             except Exception as e:
                 log.warning("spray failed: %s", e)
+        elif result.get("is_diseased") is True:
+            # Other diseases (sheath_blight, tungro, rice_blast) — record but don't spray.
+            log.info("🟠 %s detected (conf=%.2f) — no spray", label, confidence)
+            if notes:
+                log.info("   note: %s", notes)
         elif label == "error":
             log.warning("scan error: %s", notes)
         else:

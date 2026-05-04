@@ -14,6 +14,13 @@ interface ScanResult {
   sprayed: boolean;
 }
 
+const DISEASE_NAMES: Record<string, string> = {
+  brownspot: 'Brown spot',
+  sheath_blight: 'Sheath blight',
+  tungro: 'Tungro',
+  rice_blast: 'Rice blast',
+};
+
 function showToast(row: ScanResult) {
   // ScanButton fires a `loading` toast with id 'scan'; replace it.
   toast.dismiss('scan');
@@ -27,11 +34,11 @@ function showToast(row: ScanResult) {
     return;
   }
   if (row.is_diseased === true) {
-    toast.error('🚨 Brown spot detected', {
-      description: row.sprayed
-        ? `Sprayer activated (${conf} confidence)`
-        : `${conf} confidence — sprayer did not run`,
-    });
+    const name = DISEASE_NAMES[row.label ?? ''] ?? row.label ?? 'Disease';
+    const sprayNote = row.sprayed
+      ? `Sprayer activated (${conf} confidence)`
+      : `${conf} confidence — sprayer only triggers for brown spot`;
+    toast.error(`🚨 ${name} detected`, { description: sprayNote });
     return;
   }
   if (row.is_diseased === false) {
