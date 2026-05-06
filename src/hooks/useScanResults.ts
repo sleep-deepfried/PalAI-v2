@@ -18,7 +18,6 @@ const DISEASE_NAMES: Record<string, string> = {
   brownspot: 'Brown spot',
   sheath_blight: 'Sheath blight',
   tungro: 'Tungro',
-  rice_blast: 'Rice blast',
 };
 
 function showToast(row: ScanResult) {

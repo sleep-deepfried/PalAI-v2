@@ -155,7 +155,7 @@ class Rover:
             except Exception as e:
                 log.warning("spray failed: %s", e)
         elif result.get("is_diseased") is True:
-            # Other diseases (sheath_blight, tungro, rice_blast) — record but don't spray.
+            # Other diseases (sheath_blight, tungro) — record but don't spray.
             log.info("🟠 %s detected (conf=%.2f) — no spray", label, confidence)
             if notes:
                 log.info("   note: %s", notes)

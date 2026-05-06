@@ -9,7 +9,7 @@ log = logging.getLogger(__name__)
 
 PROMPT = (
     "You are a plant pathologist analyzing a photo of a rice plant. Classify it "
-    "as one of: brown spot, sheath blight, tungro, rice blast, healthy, or unknown.\n\n"
+    "as one of: brown spot, sheath blight, tungro, healthy, or unknown.\n\n"
     "Symptom guide:\n"
     "- brownspot: small-to-medium oval brown lesions, often with a gray center and "
     "yellow halo, scattered on the leaf blade.\n"
@@ -18,8 +18,6 @@ PROMPT = (
     "near the water line on the sheath rather than the blade.\n"
     "- tungro: leaves turn yellow-orange from the tip downward, plants are stunted "
     "with reduced tillering; discoloration is uniform rather than spotty.\n"
-    "- rice_blast: diamond/spindle-shaped lesions with gray-white centers and brown "
-    "or reddish borders on leaves; on necks, a dark girdling lesion.\n"
     "- healthy: green leaves/sheath with no visible lesions or discoloration.\n"
     "- unknown: image is blurry, dark, contains no plant material, or shows "
     "something that is not a rice plant.\n\n"
@@ -28,13 +26,13 @@ PROMPT = (
     "Respond ONLY with JSON:\n"
     "{\n"
     '  "is_diseased": boolean,    // true for any disease label, false for healthy/unknown\n'
-    '  "label": "brownspot" | "sheath_blight" | "tungro" | "rice_blast" | "healthy" | "unknown",\n'
+    '  "label": "brownspot" | "sheath_blight" | "tungro" | "healthy" | "unknown",\n'
     '  "confidence": number,      // 0.0 to 1.0\n'
     '  "notes": string             // brief reason, <= 140 chars, describe what you see\n'
     "}"
 )
 
-_DISEASE_LABELS = {"brownspot", "sheath_blight", "tungro", "rice_blast"}
+_DISEASE_LABELS = {"brownspot", "sheath_blight", "tungro"}
 _ALL_LABELS = _DISEASE_LABELS | {"healthy", "unknown"}
 
 _RESPONSE_SCHEMA = {
